@@ -31,8 +31,6 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getProducts(w http.ResponseWriter, r *http.Request) {
-	handleCors(w)
-
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(200)
 		return
@@ -42,13 +40,6 @@ func getProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func createProduct(w http.ResponseWriter, r *http.Request) {
-	handleCors(w)
-
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(200)
-		return
-	}
-
 	var newProduct Product
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&newProduct)
@@ -63,13 +54,6 @@ func createProduct(w http.ResponseWriter, r *http.Request) {
 	sendData(w, newProduct, 201)
 }
 
-func handleCors(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/json")
-}
-
 func sendData(w http.ResponseWriter, data any, statusCode int) {
 	w.WriteHeader(statusCode)
 	encoder := json.NewEncoder(w)
@@ -79,17 +63,19 @@ func sendData(w http.ResponseWriter, data any, statusCode int) {
 func main() {
 	mux := http.NewServeMux()
 
+	globalRoute := globalRoute(mux)
+
 	mux.Handle("GET /", http.HandlerFunc(rootHandler))
 
-	mux.Handle("GET /products", http.HandlerFunc(getProducts))
+	mux.Handle("GET /products", corsMiddleware(http.HandlerFunc(getProducts)))
 
-	mux.Handle("OPTIONS /products", http.HandlerFunc(getProducts))
+	// mux.Handle("OPTIONS /products", http.HandlerFunc(getProducts))
 
-	mux.Handle("POST /create-products", http.HandlerFunc(createProduct))
+	mux.Handle("POST /create-products", corsMiddleware(http.HandlerFunc(createProduct)))
 
 	fmt.Println("Server running on :3000")
 
-	err := http.ListenAndServe(":3000", mux)
+	err := http.ListenAndServe(":3000", globalRoute)
 	if err != nil {
 		fmt.Println("Error starting the server", err)
 	}
@@ -107,4 +93,34 @@ func init() {
 	product5 := NewProduct(5, "Mango", "Mango is fruit ka raja", 6.23, "https://5.imimg.com/data5/SELLER/Default/2023/9/344928632/OW/RQ/XC/25352890/yellow-mango-500x500.jpeg")
 
 	productList = append(productList, *product1, *product2, *product3, *product4, *product5)
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	handleCors := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+
+		next.ServeHTTP(w, r)
+	}
+
+	handler := http.HandlerFunc(handleCors)
+
+	return handler
+}
+
+func globalRoute(mux *http.ServeMux) http.Handler {
+	handleAllReq := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Content-Type", "application/json")
+		} else {
+			mux.ServeHTTP(w, r)
+		}
+	}
+
+	return http.HandlerFunc(handleAllReq)
 }
